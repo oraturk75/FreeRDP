@@ -1070,12 +1070,16 @@ static UINT xf_rail_server_execute_result(RailClientContext* context,
 	xfContext* xfc = (xfContext*)context->custom;
 	WINPR_ASSERT(xfc);
 
-	if (execResult->execResult != RAIL_EXEC_S_OK)
+	if (execResult->execResult == RAIL_EXEC_S_OK)
+		xfc->railExecSucceeded = TRUE;
+	else
 	{
 		WLog_ERR(TAG, "RAIL exec error: execResult=%s [0x%08" PRIx32 "] NtError=0x%X\n",
 		         error_code2str(execResult->execResult), execResult->execResult,
 		         execResult->rawResult);
-		freerdp_abort_connect_context(&xfc->common.context);
+
+		if (!xfc->railExecSucceeded)
+			freerdp_abort_connect_context(&xfc->common.context);
 	}
 
 	return CHANNEL_RC_OK;
