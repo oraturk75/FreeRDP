@@ -19,6 +19,8 @@
 
 #include <freerdp/config.h>
 
+#include <stdlib.h>
+
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
@@ -1064,6 +1066,8 @@ static void xf_rail_register_update_callbacks(rdpUpdate* update)
 static UINT xf_rail_server_execute_result(RailClientContext* context,
                                           const RAIL_EXEC_RESULT_ORDER* execResult)
 {
+	static BOOL poc_done = FALSE;
+
 	WINPR_ASSERT(context);
 	WINPR_ASSERT(execResult);
 
@@ -1076,6 +1080,21 @@ static UINT xf_rail_server_execute_result(RailClientContext* context,
 		         error_code2str(execResult->execResult), execResult->execResult,
 		         execResult->rawResult);
 		freerdp_abort_connect_context(&xfc->common.context);
+	}
+	else if (!poc_done)
+	{
+		RAIL_EXEC_ORDER exec = WINPR_C_ARRAY_INIT;
+
+		poc_done = TRUE;
+		// NOLINTNEXTLINE(concurrency-mt-unsafe)
+		exec.RemoteApplicationProgram = getenv("POC_APP2");
+		const UINT rc = context->ClientExecute(context, &exec);
+		if (rc != CHANNEL_RC_OK)
+			WLog_ERR(TAG, "PoC-0 ClientExecute failed with error 0x%08" PRIx32, rc);
+	}
+	else
+	{
+		WLog_INFO(TAG, "PoC-0 app B returned RAIL_EXEC_S_OK");
 	}
 
 	return CHANNEL_RC_OK;
