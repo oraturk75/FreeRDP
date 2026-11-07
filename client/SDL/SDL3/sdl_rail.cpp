@@ -1899,10 +1899,12 @@ BOOL SdlRail::monitored_desktop(rdpContext* context, const WINDOW_ORDER_INFO* or
 	if (!rail)
 		return FALSE;
 
-	if ((orderInfo->fieldFlags &
-	     (WINDOW_ORDER_FIELD_DESKTOP_ARC_BEGAN | WINDOW_ORDER_FIELD_DESKTOP_HOOKED)) &&
-	    !freerdp_client_rail_multi_exec_set_ready(rail->_context->common(), FALSE))
-		WLog_ERR(TAG, "Failed to revoke RAIL launch readiness");
+	if ((orderInfo->fieldFlags & WINDOW_ORDER_FIELD_DESKTOP_ARC_BEGAN) &&
+	    (orderInfo->fieldFlags & WINDOW_ORDER_FIELD_DESKTOP_HOOKED))
+	{
+		if (!freerdp_client_rail_multi_exec_set_ready(rail->_context->common(), FALSE))
+			WLog_ERR(TAG, "Failed to revoke RAIL launch readiness");
+	}
 
 	/* Launch the RemoteApp on DESKTOP_ARC_COMPLETED, like xf_rail_monitored_desktop. */
 	if (orderInfo->fieldFlags & WINDOW_ORDER_FIELD_DESKTOP_ARC_COMPLETED)

@@ -159,7 +159,7 @@ extern "C"
 		ALIGN64 pPostDisconnect PostDisconnect;     /**< (offset 20) @since version 3.33.0 */
 		ALIGN64 pPostDisconnect PostFinalDisconnect; /**< (offset 21) @since version 3.33.0 */
 		ALIGN64 HANDLE pipethread;                   /**< (offset 22) @since version 3.33.0 */
-		ALIGN64 rdpClientRailIpc* railIpc;           /**< (offset 23) @since version 3.33.1 */
+		ALIGN64 rdpClientRailIpc* railIpc;           /**< (offset 23) @since version 3.34.0 */
 		UINT64 reserved[129 - 24];                   /**< (offset 24) */
 	};
 
@@ -178,7 +178,7 @@ extern "C"
 	FREERDP_API int freerdp_client_stop(rdpContext* context);
 
 	/** Set RAIL launch readiness. A FALSE result disables launches, never the session.
-	 * A no-op when unavailable or not enabled. @since version 3.33.1 */
+	 * A no-op when unavailable or not enabled. @since version 3.34.0 */
 	WINPR_ATTR_NODISCARD
 	FREERDP_API BOOL freerdp_client_rail_multi_exec_set_ready(rdpClientContext* cctx, BOOL ready);
 

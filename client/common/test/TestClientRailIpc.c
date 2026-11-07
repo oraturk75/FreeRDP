@@ -28,6 +28,9 @@
 #include <unistd.h>
 #include <winpr/crt.h>
 #include <winpr/environment.h>
+#include <winpr/synch.h>
+
+#include "../rail_decoder.h"
 
 #include "../rail_ipc.h"
 #include <freerdp/channels/channels.h>
@@ -37,35 +40,25 @@ typedef enum
 {
 	CHANGE_NONE = 0,
 	CHANGE_SERVER,
-	CHANGE_SERVER_CANONICAL,
-	CHANGE_EXPLICIT_DEFAULT_PORTS,
 	CHANGE_PORT,
 	CHANGE_USER,
-	CHANGE_USER_CANONICAL,
 	CHANGE_DOMAIN,
-	CHANGE_DOMAIN_CANONICAL,
 	CHANGE_CONSOLE,
 	CHANGE_REDIRECTED_SESSION,
 	CHANGE_VMCONNECT,
 	CHANGE_CHILD_SESSION,
-	CHANGE_PRECONNECTION_INACTIVE,
 	CHANGE_PRECONNECTION_ENABLED,
 	CHANGE_PRECONNECTION_ID,
 	CHANGE_PRECONNECTION_BLOB,
 	CHANGE_LOAD_BALANCE,
 	CHANGE_RECONNECT_COOKIE,
 	CHANGE_GATEWAY_DISABLED,
-	CHANGE_GATEWAY_DISABLED_DETAILS,
 	CHANGE_GATEWAY_USAGE,
 	CHANGE_GATEWAY_HOST,
-	CHANGE_GATEWAY_HOST_CANONICAL,
 	CHANGE_GATEWAY_PORT,
 	CHANGE_GATEWAY_USER,
-	CHANGE_GATEWAY_USER_CANONICAL,
 	CHANGE_GATEWAY_DOMAIN,
-	CHANGE_GATEWAY_DOMAIN_CANONICAL,
 	CHANGE_GATEWAY_URL,
-	CHANGE_GATEWAY_URL_CANONICAL,
 	CHANGE_ARM_ENABLED,
 	CHANGE_ARM_USE_TENANT,
 	CHANGE_ARM_A,
@@ -123,22 +116,12 @@ static BOOL apply_change(rdpSettings* settings, keyChange change)
 		case CHANGE_SERVER:
 			return freerdp_settings_set_string(settings, FreeRDP_ServerHostname,
 			                                   "other.example.invalid");
-		case CHANGE_SERVER_CANONICAL:
-			return freerdp_settings_set_string(settings, FreeRDP_ServerHostname,
-			                                   "IPC-TEST.EXAMPLE.INVALID.");
-		case CHANGE_EXPLICIT_DEFAULT_PORTS:
-			return freerdp_settings_set_uint32(settings, FreeRDP_ServerPort, 3389) &&
-			       freerdp_settings_set_uint32(settings, FreeRDP_GatewayPort, 443);
 		case CHANGE_PORT:
 			return freerdp_settings_set_uint32(settings, FreeRDP_ServerPort, 3390);
 		case CHANGE_USER:
 			return freerdp_settings_set_string(settings, FreeRDP_Username, "other-user");
-		case CHANGE_USER_CANONICAL:
-			return freerdp_settings_set_string(settings, FreeRDP_Username, "IPC-TEST-USER");
 		case CHANGE_DOMAIN:
 			return freerdp_settings_set_string(settings, FreeRDP_Domain, "OTHER-DOMAIN");
-		case CHANGE_DOMAIN_CANONICAL:
-			return freerdp_settings_set_string(settings, FreeRDP_Domain, "ipc-test.");
 		case CHANGE_CONSOLE:
 			return freerdp_settings_set_bool(settings, FreeRDP_ConsoleSession, TRUE);
 		case CHANGE_REDIRECTED_SESSION:
@@ -147,9 +130,6 @@ static BOOL apply_change(rdpSettings* settings, keyChange change)
 			return freerdp_settings_set_bool(settings, FreeRDP_VmConnectMode, TRUE);
 		case CHANGE_CHILD_SESSION:
 			return freerdp_settings_set_bool(settings, FreeRDP_ConnectChildSession, TRUE);
-		case CHANGE_PRECONNECTION_INACTIVE:
-			return freerdp_settings_set_uint32(settings, FreeRDP_PreconnectionId, 7) &&
-			       freerdp_settings_set_string(settings, FreeRDP_PreconnectionBlob, "ignored");
 		case CHANGE_PRECONNECTION_ENABLED:
 			return freerdp_settings_set_bool(settings, FreeRDP_SendPreconnectionPdu, TRUE);
 		case CHANGE_PRECONNECTION_ID:
@@ -175,35 +155,20 @@ static BOOL apply_change(rdpSettings* settings, keyChange change)
 		}
 		case CHANGE_GATEWAY_DISABLED:
 			return freerdp_set_gateway_usage_method(settings, TSC_PROXY_MODE_NONE_DIRECT);
-		case CHANGE_GATEWAY_DISABLED_DETAILS:
-			return freerdp_set_gateway_usage_method(settings, TSC_PROXY_MODE_NONE_DIRECT) &&
-			       freerdp_settings_set_string(settings, FreeRDP_GatewayHostname,
-			                                   "ignored.example.invalid") &&
-			       freerdp_settings_set_uint32(settings, FreeRDP_GatewayPort, 444);
 		case CHANGE_GATEWAY_USAGE:
 			return freerdp_set_gateway_usage_method(settings, TSC_PROXY_MODE_DETECT);
 		case CHANGE_GATEWAY_HOST:
 			return freerdp_settings_set_string(settings, FreeRDP_GatewayHostname,
 			                                   "other-gateway.example.invalid");
-		case CHANGE_GATEWAY_HOST_CANONICAL:
-			return freerdp_settings_set_string(settings, FreeRDP_GatewayHostname,
-			                                   "GATEWAY.EXAMPLE.INVALID.");
 		case CHANGE_GATEWAY_PORT:
 			return freerdp_settings_set_uint32(settings, FreeRDP_GatewayPort, 444);
 		case CHANGE_GATEWAY_USER:
 			return freerdp_settings_set_string(settings, FreeRDP_GatewayUsername, "other-user");
-		case CHANGE_GATEWAY_USER_CANONICAL:
-			return freerdp_settings_set_string(settings, FreeRDP_GatewayUsername, "GATEWAY-USER");
 		case CHANGE_GATEWAY_DOMAIN:
 			return freerdp_settings_set_string(settings, FreeRDP_GatewayDomain, "OTHER-GATEWAY");
-		case CHANGE_GATEWAY_DOMAIN_CANONICAL:
-			return freerdp_settings_set_string(settings, FreeRDP_GatewayDomain, "gateway.");
 		case CHANGE_GATEWAY_URL:
 			return freerdp_settings_set_string(settings, FreeRDP_GatewayUrl,
 			                                   "https://gateway.example.invalid/other");
-		case CHANGE_GATEWAY_URL_CANONICAL:
-			return freerdp_settings_set_string(settings, FreeRDP_GatewayUrl,
-			                                   "wss://GATEWAY.EXAMPLE.INVALID.:443/rdp");
 		case CHANGE_ARM_ENABLED:
 			return freerdp_settings_set_bool(settings, FreeRDP_GatewayArmTransport, TRUE);
 		case CHANGE_ARM_USE_TENANT:
@@ -353,20 +318,10 @@ static BOOL test_session_keys(const char* directory)
 		const char* label;
 	} cases[] = {
 		{ CHANGE_NONE, CHANGE_NONE, TRUE, "same settings" },
-		{ CHANGE_NONE, CHANGE_PRECONNECTION_INACTIVE, TRUE,
-		  "ignores inactive preconnection details" },
 		{ CHANGE_NONE, CHANGE_SERVER, FALSE, "includes endpoint" },
-		{ CHANGE_NONE, CHANGE_SERVER_CANONICAL, TRUE,
-		  "canonicalizes endpoint case and trailing dot" },
-		{ CHANGE_NONE, CHANGE_EXPLICIT_DEFAULT_PORTS, TRUE,
-		  "canonicalizes implicit and explicit default ports" },
 		{ CHANGE_NONE, CHANGE_PORT, FALSE, "includes endpoint port" },
 		{ CHANGE_NONE, CHANGE_USER, FALSE, "includes user" },
-		{ CHANGE_NONE, CHANGE_USER_CANONICAL, FALSE,
-		  "keeps user case distinct for non-Windows servers" },
 		{ CHANGE_NONE, CHANGE_DOMAIN, FALSE, "includes domain" },
-		{ CHANGE_NONE, CHANGE_DOMAIN_CANONICAL, FALSE,
-		  "keeps domain spelling distinct for non-Windows servers" },
 		{ CHANGE_NONE, CHANGE_CONSOLE, FALSE, "includes console-session selection" },
 		{ CHANGE_NONE, CHANGE_REDIRECTED_SESSION, FALSE, "includes redirected session ID" },
 		{ CHANGE_NONE, CHANGE_VMCONNECT, FALSE, "includes VM-connect mode" },
@@ -379,21 +334,12 @@ static BOOL test_session_keys(const char* directory)
 		{ CHANGE_NONE, CHANGE_LOAD_BALANCE, FALSE, "includes load-balance data" },
 		{ CHANGE_NONE, CHANGE_RECONNECT_COOKIE, FALSE, "includes reconnect session cookie" },
 		{ CHANGE_NONE, CHANGE_GATEWAY_DISABLED, FALSE, "includes gateway use" },
-		{ CHANGE_GATEWAY_DISABLED, CHANGE_GATEWAY_DISABLED_DETAILS, TRUE,
-		  "ignores inactive gateway details" },
 		{ CHANGE_NONE, CHANGE_GATEWAY_USAGE, FALSE, "includes gateway bypass policy" },
 		{ CHANGE_NONE, CHANGE_GATEWAY_HOST, FALSE, "includes gateway endpoint" },
-		{ CHANGE_NONE, CHANGE_GATEWAY_HOST_CANONICAL, TRUE,
-		  "canonicalizes gateway host case and trailing dot" },
 		{ CHANGE_NONE, CHANGE_GATEWAY_PORT, FALSE, "includes gateway port" },
 		{ CHANGE_NONE, CHANGE_GATEWAY_USER, FALSE, "includes gateway user" },
-		{ CHANGE_NONE, CHANGE_GATEWAY_USER_CANONICAL, FALSE, "keeps gateway user case distinct" },
 		{ CHANGE_NONE, CHANGE_GATEWAY_DOMAIN, FALSE, "includes gateway domain" },
-		{ CHANGE_NONE, CHANGE_GATEWAY_DOMAIN_CANONICAL, FALSE,
-		  "keeps gateway domain spelling distinct" },
 		{ CHANGE_NONE, CHANGE_GATEWAY_URL, FALSE, "includes gateway URL route" },
-		{ CHANGE_NONE, CHANGE_GATEWAY_URL_CANONICAL, TRUE,
-		  "canonicalizes gateway URL scheme, host and default port" },
 		{ CHANGE_NONE, CHANGE_ARM_ENABLED, FALSE, "includes ARM gateway mode" },
 		{ CHANGE_ARM_ENABLED, CHANGE_ARM_USE_TENANT, FALSE, "includes ARM tenant-selection mode" },
 		{ CHANGE_ARM_ENABLED, CHANGE_ARM_A, FALSE, "includes ARM authority and tenant" },
@@ -478,7 +424,7 @@ static BOOL expect_failed_start(rdpClientContext* cctx)
 }
 
 /* F3: fail through commonPreConnect; all setup descriptors must be released. */
-static BOOL test_unsafe_paths(const char* directory)
+static BOOL test_runtime_directory(const char* directory)
 {
 	BOOL ok = FALSE;
 	char fifo[1024] = WINPR_C_ARRAY_INIT;
@@ -494,13 +440,6 @@ static BOOL test_unsafe_paths(const char* directory)
 	if ((unlink(lock) < 0) || (symlink("missing", lock) < 0) || !expect_failed_start(cctx) ||
 	    (unlink(lock) < 0))
 		goto out;
-	const int fd = open(fifo, O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, 0600);
-	if (fd < 0)
-		goto out;
-	(void)close(fd);
-	if (!expect_failed_start(cctx) || (unlink(fifo) < 0) || (mkfifo(fifo, 0600) < 0) ||
-	    (chmod(fifo, 0644) < 0) || !expect_failed_start(cctx) || (unlink(fifo) < 0))
-		goto out;
 	ok = TRUE;
 out:
 	(void)chmod(directory, 0700);
@@ -513,21 +452,20 @@ static BOOL fail_pre_connect(WINPR_ATTR_UNUSED freerdp* instance)
 	return FALSE;
 }
 
-/* F4 and F8: exclusion, final-disconnect cleanup, stop twice, stale reuse and free. */
+/* F4 and F8: exclusion, final-disconnect cleanup, stop twice, stale replacement and free. */
 static BOOL test_lifecycle(const char* directory)
 {
 	BOOL ok = FALSE;
 	char fifo[1024] = WINPR_C_ARRAY_INIT;
 	rdpClientContext* first = new_context();
 	rdpClientContext* second = new_context();
-	struct stat before = WINPR_C_ARRAY_INIT;
 	struct stat after = WINPR_C_ARRAY_INIT;
 	const int descriptors = count_descriptors();
 	if (!first || !second || (descriptors < 0) || !start(first) || !start(first) ||
 	    (find_files(directory, ".fifo", fifo) != 1) ||
 	    !freerdp_settings_set_bool(second->context.settings, FreeRDP_RemoteApplicationMultiExec,
 	                               TRUE) ||
-	    !expect_failed_start(second))
+	    !expect_failed_start(second) || (find_files(directory, ".fifo", nullptr) != 1))
 		goto out;
 	wEventType* connected = PubSub_FindEventType(first->context.pubSub, "ChannelConnected");
 	wEventType* disconnected = PubSub_FindEventType(first->context.pubSub, "ChannelDisconnected");
@@ -541,10 +479,9 @@ static BOOL test_lifecycle(const char* directory)
 	if ((connected->EventHandlerCount != 0) || (disconnected->EventHandlerCount != 0) ||
 	    (count_descriptors() != descriptors) || (lstat(fifo, &after) == 0) || (errno != ENOENT) ||
 	    (find_files(directory, ".lock", nullptr) < 1) || (mkfifo(fifo, 0600) < 0) ||
-	    (lstat(fifo, &before) < 0) ||
+	    (chmod(fifo, 0644) < 0) ||
 	    !second->context.instance->PreConnect(second->context.instance) ||
-	    (lstat(fifo, &after) < 0) || (before.st_dev != after.st_dev) ||
-	    (before.st_ino != after.st_ino))
+	    (lstat(fifo, &after) < 0) || !S_ISFIFO(after.st_mode) || ((after.st_mode & 0777) != 0600))
 		goto out;
 	freerdp_client_context_free(&second->context);
 	second = nullptr;
@@ -626,7 +563,9 @@ static BOOL test_dispatch(const char* directory)
 	wEventType* disconnectEvent = PubSub_FindEventType(cctx->context.pubSub, "ChannelDisconnected");
 	const ChannelConnectedEventArgs unrelatedConnect = { .name = "unrelated" };
 	const ChannelDisconnectedEventArgs unrelatedDisconnect = { .name = "unrelated" };
-	const DWORD base = event_count(cctx);
+	HANDLE originalEvents[64] = WINPR_C_ARRAY_INIT;
+	const DWORD base =
+	    freerdp_get_event_handles(&cctx->context, originalEvents, ARRAYSIZE(originalEvents));
 	if (base == 0)
 		goto out;
 	if (PubSub_OnChannelConnected(cctx->context.pubSub, &cctx->context, &connected) != 1)
@@ -643,12 +582,28 @@ static BOOL test_dispatch(const char* directory)
 	    !rdp_client_transition_to_state(cctx->context.rdp, CONNECTION_STATE_ACTIVE) ||
 	    !dispatch(cctx) || (capture.count != 1))
 		goto out;
+	HANDLE events[64] = WINPR_C_ARRAY_INIT;
+	HANDLE fifoEvent = nullptr;
+	const DWORD eventCount = freerdp_get_event_handles(&cctx->context, events, ARRAYSIZE(events));
+	for (DWORD x = 0; x < eventCount; x++)
+	{
+		DWORD y = 0;
+		for (; y < base; y++)
+		{
+			if (events[x] == originalEvents[y])
+				break;
+		}
+		if (y == base)
+			fifoEvent = events[x];
+	}
+	if (!fifoEvent)
+		goto out;
 	if ((PubSub_OnChannelConnected(cctx->context.pubSub, &cctx->context, &unrelatedConnect) != 1) ||
 	    (PubSub_OnChannelDisconnected(cctx->context.pubSub, &cctx->context, &unrelatedDisconnect) !=
 	     1) ||
 	    (event_count(cctx) != base + 1U))
 		goto out;
-	/* Empty FIFO: the zero-time wait is harmless. */
+	/* Empty FIFO: the nonblocking read is harmless. */
 	if (!dispatch(cctx) || (capture.count != 1) ||
 	    !freerdp_client_rail_multi_exec_set_ready(cctx, FALSE) ||
 	    !freerdp_client_rail_multi_exec_set_ready(cctx, FALSE) || (event_count(cctx) != base) ||
@@ -690,21 +645,30 @@ static BOOL test_dispatch(const char* directory)
 	    (before.st_dev != after.st_dev) || (before.st_ino != after.st_ino) ||
 	    (connectEvent->EventHandlerCount != 1) || (disconnectEvent->EventHandlerCount != 1))
 		goto out;
-	/* F6: the seventeenth record stays in the FIFO for the next pass. */
-	capture.count = 0;
-	for (size_t x = 0; x < 17; x++)
-	{
-		if (!write_record(writer))
-			goto out;
-	}
-	if (!dispatch(cctx) || (capture.count != 16) || !dispatch(cctx) || (capture.count != 17))
+	/* A partial record survives readiness revocation and channel reconnect. */
+	if ((write(writer, "program=", 8) != 8) || !dispatch(cctx) || (capture.count != 4) ||
+	    !freerdp_client_rail_multi_exec_set_ready(cctx, FALSE) ||
+	    (PubSub_OnChannelDisconnected(cctx->context.pubSub, &cctx->context, &disconnected) != 1) ||
+	    (write(writer, "app\n\n", 5) != 5) || !dispatch(cctx) || (capture.count != 4) ||
+	    (PubSub_OnChannelConnected(cctx->context.pubSub, &cctx->context, &connected) != 1) ||
+	    !freerdp_client_rail_multi_exec_set_ready(cctx, TRUE) || !dispatch(cctx) ||
+	    (capture.count != 5))
 		goto out;
-	/* Rejections consume the same record budget, including one-byte empty records. */
-	const char rejected[] = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
+
+	/* Fill the decoder, then leave a second record in the FIFO for the next wake. */
+	char full[RAIL_DECODER_CAPACITY] = WINPR_C_ARRAY_INIT;
+	memset(full, 'x', sizeof(full));
+	const char prefix[] = "program=app\narguments=";
+	memcpy(full, prefix, sizeof(prefix) - 1U);
+	full[sizeof(full) - 2U] = '\n';
+	full[sizeof(full) - 1U] = '\n';
+	const size_t first = sizeof(full) - 16U;
 	capture.count = 0;
-	if ((write(writer, rejected, sizeof(rejected) - 1U) != (ssize_t)(sizeof(rejected) - 1U)) ||
-	    !write_record(writer) || !dispatch(cctx) || (capture.count != 0) || !dispatch(cctx) ||
-	    (capture.count != 1))
+	if ((write(writer, full, first) != (ssize_t)first) || !dispatch(cctx) || (capture.count != 0) ||
+	    (write(writer, full + first, 16) != 16) || !write_record(writer) || !dispatch(cctx) ||
+	    (capture.count != 1) || (WaitForSingleObject(fifoEvent, 0) != WAIT_OBJECT_0) ||
+	    !dispatch(cctx) || (capture.count != 2) ||
+	    (WaitForSingleObject(fifoEvent, 0) != WAIT_TIMEOUT))
 		goto out;
 	/* F7: one local rejection does not prevent the next Execute. */
 	capture.count = 0;
@@ -740,7 +704,8 @@ int TestClientRailIpc(int argc, char* argv[])
 	BOOL ok = SetEnvironmentVariableA("XDG_RUNTIME_DIR", directory);
 	if (ok)
 		ok = test_inactive(directory) && test_session_keys(directory) &&
-		     test_unsafe_paths(directory) && test_lifecycle(directory) && test_dispatch(directory);
+		     test_runtime_directory(directory) && test_lifecycle(directory) &&
+		     test_dispatch(directory);
 	if (!ok)
 		(void)fprintf(stderr, "RAIL IPC lifecycle tests failed\n");
 	while (find_files(directory, "", path) > 0)

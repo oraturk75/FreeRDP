@@ -21,14 +21,13 @@
 
 #include <freerdp/rail.h>
 
+#define RAIL_DECODER_CAPACITY 4096U
+
 typedef struct
 {
-	char* record;
-	size_t maxRecord;
-	size_t recordBytes;
-	BOOL atLineStart;
-	BOOL recordInvalid;
-	const char* recordError;
+	char buffer[RAIL_DECODER_CAPACITY + 1U];
+	size_t used;
+	BOOL discarding;
 } RailDecoder;
 
 typedef enum
@@ -38,15 +37,11 @@ typedef enum
 	RAIL_DECODER_REJECTED
 } RailDecoderResult;
 
-WINPR_ATTR_NODISCARD
-FREERDP_LOCAL BOOL rail_decoder_init(RailDecoder* dec, size_t maxRecord);
-FREERDP_LOCAL void rail_decoder_uninit(RailDecoder* dec);
-FREERDP_LOCAL void rail_decoder_reset(RailDecoder* dec);
+FREERDP_LOCAL void rail_decoder_consume(RailDecoder* dec, size_t consumed);
 
-/* Stops at the first completed record; consumed includes its terminator.
- * The order's strings are borrowed until the next feed or reset.
- * Rejection reasons are static strings; incomplete input has no order or reason. */
+/* Append input to buffer + used, up to CAPACITY, then call next until incomplete.
+ * Consume each returned prefix after using its borrowed order strings.
+ * Rejected spans with no reason are skipped blank lines or oversized-record tails. */
 WINPR_ATTR_NODISCARD
-FREERDP_LOCAL RailDecoderResult rail_decoder_feed(RailDecoder* dec, const BYTE* data, size_t length,
-                                                  size_t* consumed, RAIL_EXEC_ORDER* order,
-                                                  const char** reason);
+FREERDP_LOCAL RailDecoderResult rail_decoder_next(RailDecoder* dec, size_t* consumed,
+                                                  RAIL_EXEC_ORDER* order, const char** reason);

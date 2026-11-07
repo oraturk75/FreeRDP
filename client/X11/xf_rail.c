@@ -1111,14 +1111,11 @@ xf_rail_monitored_desktop(WINPR_ATTR_UNUSED rdpContext* context,
 		return FALSE;
 	}
 
-	if ((orderInfo->fieldFlags &
-	     (WINDOW_ORDER_FIELD_DESKTOP_ARC_BEGAN | WINDOW_ORDER_FIELD_DESKTOP_HOOKED)) &&
-	    !freerdp_client_rail_multi_exec_set_ready(&xfc->common, FALSE))
-		WLog_Print(xfc->log, WLOG_ERROR, "RAIL IPC failed to revoke launch readiness");
-
 	if ((orderInfo->fieldFlags & WINDOW_ORDER_FIELD_DESKTOP_ARC_BEGAN) &&
 	    (orderInfo->fieldFlags & WINDOW_ORDER_FIELD_DESKTOP_HOOKED))
 	{
+		if (!freerdp_client_rail_multi_exec_set_ready(&xfc->common, FALSE))
+			WLog_Print(xfc->log, WLOG_ERROR, "RAIL IPC failed to revoke launch readiness");
 		// discard all windows/notify icons
 		WLog_Print(xfc->log, WLOG_WARN,
 		           "TODO: implement WINDOW_ORDER_FIELD_DESKTOP_ARC_BEGAN && "
